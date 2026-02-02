@@ -1,0 +1,209 @@
+@import "tailwindcss";
+
+/* ============================================
+   THEME SYSTEM - CSS Variables
+   ============================================ */
+
+@theme {
+  /* Map CSS variables to Tailwind utilities */
+  --color-primary: var(--theme-color-primary);
+  --color-secondary: var(--theme-color-secondary);
+  --color-accent: var(--theme-color-accent);
+  --color-background: var(--theme-color-background);
+  --color-surface: var(--theme-color-surface);
+  --color-text: var(--theme-color-text);
+  --color-text-secondary: var(--theme-color-text-secondary);
+  --color-border: var(--theme-color-border);
+  --color-success: var(--theme-color-success);
+  --color-error: var(--theme-color-error);
+
+  --font-sans: var(--theme-font-sans);
+  --font-mono: var(--theme-font-mono);
+
+  --radius-sm: calc(var(--theme-border-radius) * 0.5);
+  --radius-default: var(--theme-border-radius);
+  --radius-lg: calc(var(--theme-border-radius) * 1.5);
+  --radius-full: 9999px;
+
+  --shadow-sm: var(--theme-shadow-sm);
+  --shadow-default: var(--theme-shadow);
+  --shadow-lg: var(--theme-shadow-lg);
+}
+
+/* ============================================
+   CLAUDE THEME (Default)
+   Clean, modern design inspired by Anthropic
+   ============================================ */
+
+:root,
+[data-theme="claude"] {
+  --theme-color-primary: #5a3dc9;
+  --theme-color-secondary: #7c5cdb;
+  --theme-color-accent: #00d4aa;
+  --theme-color-background: #ffffff;
+  --theme-color-surface: #f7f7f8;
+  --theme-color-text: #1a1a1a;
+  --theme-color-text-secondary: #6b6b6b;
+  --theme-color-border: #e5e5e5;
+  --theme-color-success: #10b981;
+  --theme-color-error: #ef4444;
+
+  --theme-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", sans-serif;
+  --theme-font-mono: "SF Mono", SFMono-Regular, Consolas, "Liberation Mono",
+    Menlo, monospace;
+
+  --theme-border-radius: 0.5rem;
+
+  --theme-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --theme-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --theme-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -4px rgba(0, 0, 0, 0.1);
+}
+
+/* ============================================
+   RETRO 1980s THEME
+   Neon-lit CRT aesthetic
+   ============================================ */
+
+[data-theme="retro80s"] {
+  --theme-color-primary: #ff00ff;
+  --theme-color-secondary: #00ffff;
+  --theme-color-accent: #ffff00;
+  --theme-color-background: #0a0a0a;
+  --theme-color-surface: #1a1a2e;
+  --theme-color-text: #00ff41;
+  --theme-color-text-secondary: #00cccc;
+  --theme-color-border: #333366;
+  --theme-color-success: #00ff00;
+  --theme-color-error: #ff0000;
+
+  --theme-font-sans: "VT323", "Courier New", monospace;
+  --theme-font-mono: "VT323", "Courier New", monospace;
+
+  --theme-border-radius: 0;
+
+  --theme-shadow-sm: 0 0 5px rgba(255, 0, 255, 0.3);
+  --theme-shadow: 0 0 10px rgba(255, 0, 255, 0.5),
+    0 0 20px rgba(0, 255, 255, 0.3);
+  --theme-shadow-lg: 0 0 20px rgba(255, 0, 255, 0.6),
+    0 0 40px rgba(0, 255, 255, 0.4), 0 0 60px rgba(255, 255, 0, 0.2);
+}
+
+/* Retro 80s specific effects */
+[data-theme="retro80s"] body {
+  background-image: linear-gradient(
+    transparent 50%,
+    rgba(0, 0, 0, 0.15) 50%
+  );
+  background-size: 100% 4px;
+  animation: scanlines 0.1s linear infinite;
+}
+
+[data-theme="retro80s"] * {
+  text-shadow: 0 0 5px currentColor;
+}
+
+[data-theme="retro80s"] button {
+  border: 2px solid var(--theme-color-secondary);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+[data-theme="retro80s"] button:hover {
+  box-shadow: 0 0 20px var(--theme-color-primary),
+    0 0 40px var(--theme-color-secondary);
+  transform: scale(1.02);
+}
+
+[data-theme="retro80s"] input,
+[data-theme="retro80s"] textarea {
+  border: 2px solid var(--theme-color-secondary);
+  background-color: var(--theme-color-surface);
+  caret-color: var(--theme-color-accent);
+}
+
+[data-theme="retro80s"] input:focus,
+[data-theme="retro80s"] textarea:focus {
+  box-shadow: 0 0 10px var(--theme-color-secondary),
+    inset 0 0 5px var(--theme-color-secondary);
+}
+
+@keyframes scanlines {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 4px;
+  }
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: var(--theme-font-sans);
+  background-color: var(--theme-color-background);
+  color: var(--theme-color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+code {
+  font-family: var(--theme-font-mono);
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+[data-theme="retro80s"] .glass {
+  background: rgba(0, 255, 255, 0.05);
+  border: 1px solid rgba(0, 255, 255, 0.3);
+}
+
+/* Focus visible styles */
+:focus-visible {
+  outline: 2px solid var(--theme-color-primary);
+  outline-offset: 2px;
+}
+
+/* Selection styles */
+::selection {
+  background-color: var(--theme-color-primary);
+  color: white;
+}
+
+[data-theme="retro80s"] ::selection {
+  background-color: var(--theme-color-accent);
+  color: black;
+}
+
+/* ============================================
+   CUSTOM FONTS
+   ============================================ */
+
+@font-face {
+  font-family: "VT323";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("https://fonts.gstatic.com/s/vt323/v17/pxiKyp0ihIEF2isfFJU.woff2")
+    format("woff2");
+}
