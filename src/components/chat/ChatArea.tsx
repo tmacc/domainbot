@@ -51,14 +51,28 @@ export function ChatArea({ conversationId, onNewConversation }: ChatAreaProps): 
   // Sync Convex messages to local state
   useEffect(() => {
     if (threadMessages) {
-      const mapped: Message[] = threadMessages.map((m) => ({
-        id: m._id,
-        role: m.role as "user" | "assistant",
-        content: m.content,
-        timestamp: m.createdAt,
-        toolCalls: m.toolCalls,
-        toolResults: m.toolResults,
-      }));
+      const mapped: Message[] = threadMessages.map((m) => {
+        // Extract domain results from toolResults if present
+        let domainResults: DomainResult[] | undefined;
+        if (m.toolResults && m.toolResults.length > 0) {
+          const domainToolResult = m.toolResults.find(
+            (tr) => tr.toolCallId === "check-1" || Array.isArray(tr.result)
+          );
+          if (domainToolResult && Array.isArray(domainToolResult.result)) {
+            domainResults = domainToolResult.result as DomainResult[];
+          }
+        }
+
+        return {
+          id: m._id,
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          timestamp: m.createdAt,
+          toolCalls: m.toolCalls,
+          toolResults: m.toolResults,
+          domainResults,
+        };
+      });
       setMessages(mapped);
     }
   }, [threadMessages]);
