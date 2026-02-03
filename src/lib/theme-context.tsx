@@ -6,6 +6,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { useUser } from "./user-context";
 
 // Theme variable types
 export interface ThemeVariables {
@@ -152,15 +155,34 @@ export function ThemeProvider({
   children,
   defaultTheme = "claude",
 }: ThemeProviderProps): JSX.Element {
-  // TODO: Replace with Convex queries when auth is set up
   const themes = BUILT_IN_THEMES;
   const isLoading = false;
+  const { userId } = useUser();
+
+  // Convex mutation to persist theme selection
+  const updateThemeMutation = useMutation(api.users.updateTheme);
+
+  // Query user to get their saved theme preference
+  const user = useQuery(
+    api.users.getById,
+    userId ? { userId } : "skip"
+  );
 
   const [theme, setThemeState] = useState<string>(() => {
     // SSR-safe initialization
     if (typeof window === "undefined") return defaultTheme;
     return localStorage.getItem(STORAGE_KEY) || defaultTheme;
   });
+
+  // Sync theme from Convex user record on initial load
+  useEffect(() => {
+    if (user?.selectedTheme && user.selectedTheme !== theme) {
+      setThemeState(user.selectedTheme);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(STORAGE_KEY, user.selectedTheme);
+      }
+    }
+  }, [user?.selectedTheme]);
 
   // Apply theme on mount and when theme changes
   useEffect(() => {
@@ -174,9 +196,14 @@ export function ThemeProvider({
       if (typeof window !== "undefined") {
         localStorage.setItem(STORAGE_KEY, newTheme);
       }
-      // TODO: Persist to Convex when auth is set up
+      // Persist to Convex if user is available
+      if (userId) {
+        updateThemeMutation({ userId, theme: newTheme }).catch((err) => {
+          console.error("Failed to persist theme to Convex:", err);
+        });
+      }
     },
-    []
+    [userId, updateThemeMutation]
   );
 
   const currentThemeData = themes.find((t) => t.slug === theme) || null;

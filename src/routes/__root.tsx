@@ -1,15 +1,14 @@
 import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
-import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
-import { TanStackDevtools } from "@tanstack/react-devtools";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 
+import { env } from "../lib/env";
 import { ThemeProvider } from "../lib/theme-context";
 import { UserProvider } from "../lib/user-context";
 
 import appCss from "../styles.css?url";
 
-// Create Convex client
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+// Create Convex client (env.ts validates VITE_CONVEX_URL exists)
+const convex = new ConvexReactClient(env.VITE_CONVEX_URL);
 
 export const Route = createRootRoute({
   head: () => ({
@@ -65,17 +64,6 @@ function RootDocument({ children }: { children: React.ReactNode }): JSX.Element 
               <div className="h-screen bg-background text-text">
                 {children}
               </div>
-            <TanStackDevtools
-            config={{
-              position: "bottom-right",
-            }}
-            plugins={[
-              {
-                name: "Tanstack Router",
-                render: <TanStackRouterDevtoolsPanel />,
-              },
-            ]}
-            />
             </ThemeProvider>
           </UserProvider>
         </ConvexProvider>

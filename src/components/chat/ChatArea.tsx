@@ -48,6 +48,18 @@ export function ChatArea({ conversationId, onNewConversation }: ChatAreaProps): 
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  // Sync conversationId prop to activeThreadId state
+  useEffect(() => {
+    if (conversationId) {
+      // User selected a conversation from the sidebar
+      setActiveThreadId(conversationId as Id<"threads">);
+    } else {
+      // New chat - clear state
+      setActiveThreadId(null);
+      setMessages([]);
+    }
+  }, [conversationId]);
+
   // Sync Convex messages to local state
   useEffect(() => {
     if (threadMessages) {
@@ -171,11 +183,29 @@ export function ChatArea({ conversationId, onNewConversation }: ChatAreaProps): 
       console.error("Error generating AI response:", error);
       setIsTyping(false);
 
-      // Add error message
+      // Determine error type and provide specific message
+      let errorContent = "Sorry, I encountered an error while processing your request. Please try again.";
+
+      if (error instanceof Error) {
+        const message = error.message.toLowerCase();
+
+        if (message.includes("network") || message.includes("fetch") || message.includes("connection")) {
+          errorContent = "Network error: Unable to reach the server. Please check your internet connection and try again.";
+        } else if (message.includes("rate limit") || message.includes("429")) {
+          errorContent = "Rate limit exceeded. Please wait a moment before sending another message.";
+        } else if (message.includes("unauthorized") || message.includes("401") || message.includes("api key")) {
+          errorContent = "API configuration error. Please check the server configuration.";
+        } else if (message.includes("timeout")) {
+          errorContent = "Request timed out. The server took too long to respond. Please try again.";
+        } else if (message.includes("500") || message.includes("internal server")) {
+          errorContent = "Server error. The AI service is temporarily unavailable. Please try again later.";
+        }
+      }
+
       const errorMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: "Sorry, I encountered an error while processing your request. Please try again.",
+        content: errorContent,
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, errorMessage]);

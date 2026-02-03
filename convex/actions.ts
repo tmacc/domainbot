@@ -2,8 +2,8 @@ import { v } from "convex/values";
 import { action } from "./_generated/server";
 import { api } from "./_generated/api";
 
-// Namecheap API configuration
-const NAMECHEAP_API_URL = "https://api.namecheap.com/xml.response";
+// GoDaddy API configuration
+const GODADDY_API_URL = "https://api.godaddy.com/v1/domains/available";
 
 interface DomainCheckResult {
   domain: string;
@@ -14,7 +14,7 @@ interface DomainCheckResult {
 }
 
 /**
- * Check domain availability via Namecheap API
+ * Check domain availability via GoDaddy API
  * Uses mock data if API credentials are not configured
  */
 export const checkDomains = action({
@@ -22,137 +22,108 @@ export const checkDomains = action({
     domains: v.array(v.string()),
   },
   handler: async (_ctx, { domains }): Promise<DomainCheckResult[]> => {
-    const apiUser = process.env.NAMECHEAP_API_USER;
-    const apiKey = process.env.NAMECHEAP_API_KEY;
-    const userName = process.env.NAMECHEAP_USERNAME;
-    const clientIp = process.env.NAMECHEAP_CLIENT_IP;
+    const apiKey = process.env.GODADDY_API_KEY;
+    const apiSecret = process.env.GODADDY_API_SECRET;
 
     // If no API credentials, use mock mode
-    if (!apiUser || !apiKey || !userName || !clientIp) {
-      console.log("Namecheap API not configured, using mock mode");
+    if (!apiKey || !apiSecret) {
+      console.log("GoDaddy API not configured, using mock mode");
       return mockDomainAvailability(domains);
     }
 
     try {
-      return await checkDomainsWithNamecheap(domains, {
-        apiUser,
-        apiKey,
-        userName,
-        clientIp,
-      });
+      return await checkDomainsWithGoDaddy(domains, apiKey, apiSecret);
     } catch (error) {
-      console.error("Namecheap API error, falling back to mock:", error);
+      console.error("GoDaddy API error, falling back to mock:", error);
       return mockDomainAvailability(domains);
     }
   },
 });
 
-async function checkDomainsWithNamecheap(
+async function checkDomainsWithGoDaddy(
   domains: string[],
-  config: {
-    apiUser: string;
-    apiKey: string;
-    userName: string;
-    clientIp: string;
-  }
+  apiKey: string,
+  apiSecret: string
 ): Promise<DomainCheckResult[]> {
-  // Namecheap limits to 50 domains per request
-  const MAX_DOMAINS_PER_REQUEST = 50;
-
-  if (domains.length > MAX_DOMAINS_PER_REQUEST) {
-    const batches: string[][] = [];
-    for (let i = 0; i < domains.length; i += MAX_DOMAINS_PER_REQUEST) {
-      batches.push(domains.slice(i, i + MAX_DOMAINS_PER_REQUEST));
-    }
-
-    const results: DomainCheckResult[] = [];
-    for (const batch of batches) {
-      const batchResults = await checkDomainBatch(batch, config);
-      results.push(...batchResults);
-    }
-    return results;
-  }
-
-  return checkDomainBatch(domains, config);
-}
-
-async function checkDomainBatch(
-  domains: string[],
-  config: {
-    apiUser: string;
-    apiKey: string;
-    userName: string;
-    clientIp: string;
-  }
-): Promise<DomainCheckResult[]> {
-  const params = new URLSearchParams({
-    ApiUser: config.apiUser,
-    ApiKey: config.apiKey,
-    UserName: config.userName,
-    Command: "namecheap.domains.check",
-    ClientIp: config.clientIp,
-    DomainList: domains.join(","),
-  });
-
-  const response = await fetch(`${NAMECHEAP_API_URL}?${params.toString()}`);
-
-  if (!response.ok) {
-    throw new Error(`Namecheap API error: ${response.status}`);
-  }
-
-  const xmlText = await response.text();
-  return parseNamecheapResponse(xmlText, domains);
-}
-
-function parseNamecheapResponse(
-  xmlText: string,
-  originalDomains: string[]
-): DomainCheckResult[] {
-  // Simple XML parsing without external dependency
-  // Look for DomainCheckResult elements
-
   const results: DomainCheckResult[] = [];
 
-  // Extract each DomainCheckResult
-  const domainResultRegex =
-    /<DomainCheckResult\s+([^>]+)\/>/g;
-  let match: RegExpExecArray | null;
+  // GoDaddy's bulk check endpoint or check individually
+  // For production, we check each domain individually to get accurate pricing
+  for (const domain of domains) {
+    try {
+      const response = await fetch(`${GODADDY_API_URL}?domain=${encodeURIComponent(domain)}`, {
+        method: "GET",
+        headers: {
+          "Authorization": `sso-key ${apiKey}:${apiSecret}`,
+          "Accept": "application/json",
+        },
+      });
 
-  while ((match = domainResultRegex.exec(xmlText)) !== null) {
-    const attributes = match[1];
+      if (!response.ok) {
+        // Rate limited or other error - mark as unknown
+        if (response.status === 429) {
+          console.log(`Rate limited on ${domain}, waiting...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Retry once
+          const retryResponse = await fetch(`${GODADDY_API_URL}?domain=${encodeURIComponent(domain)}`, {
+            method: "GET",
+            headers: {
+              "Authorization": `sso-key ${apiKey}:${apiSecret}`,
+              "Accept": "application/json",
+            },
+          });
+          if (retryResponse.ok) {
+            const data = await retryResponse.json();
+            results.push(parseGoDaddyResult(domain, data));
+            continue;
+          }
+        }
+        results.push({
+          domain,
+          available: false,
+          premium: false,
+          errorMessage: `API error: ${response.status}`,
+        });
+        continue;
+      }
 
-    const domainMatch = /Domain="([^"]+)"/.exec(attributes);
-    const availableMatch = /Available="([^"]+)"/.exec(attributes);
-    const premiumMatch = /IsPremiumName="([^"]+)"/.exec(attributes);
-    const priceMatch = /PremiumRegistrationPrice="([^"]+)"/.exec(attributes);
+      const data = await response.json();
+      results.push(parseGoDaddyResult(domain, data));
 
-    if (domainMatch) {
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } catch (error) {
       results.push({
-        domain: domainMatch[1],
-        available: availableMatch?.[1] === "true",
-        premium: premiumMatch?.[1] === "true",
-        price: priceMatch ? Number.parseFloat(priceMatch[1]) : undefined,
+        domain,
+        available: false,
+        premium: false,
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
       });
     }
   }
 
-  // If no results parsed, check for errors
-  if (results.length === 0) {
-    const errorMatch = /<Error[^>]*>([^<]+)<\/Error>/.exec(xmlText);
-    if (errorMatch) {
-      throw new Error(`Namecheap API error: ${errorMatch[1]}`);
-    }
-
-    // Return error results for all domains
-    return originalDomains.map((domain) => ({
-      domain,
-      available: false,
-      premium: false,
-      errorMessage: "Failed to parse API response",
-    }));
-  }
-
   return results;
+}
+
+function parseGoDaddyResult(domain: string, data: {
+  available?: boolean;
+  definitive?: boolean;
+  price?: number;
+  currency?: string;
+}): DomainCheckResult {
+  // GoDaddy returns: { available, definitive, domain, price, currency }
+  const available = data.available === true;
+  const price = data.price ? data.price / 1000000 : undefined; // GoDaddy returns price in micros
+
+  // Consider premium if price is significantly higher than standard (~$12)
+  const premium = available && price !== undefined && price > 50;
+
+  return {
+    domain,
+    available,
+    premium,
+    price: premium ? price : undefined,
+  };
 }
 
 /**
@@ -187,8 +158,11 @@ function mockDomainAvailability(domains: string[]): DomainCheckResult[] {
   });
 }
 
+// Vercel AI Gateway configuration
+const VERCEL_AI_GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
+
 /**
- * Generate AI response using Claude via Vercel AI Gateway
+ * Generate AI response using Vercel AI Gateway (Claude)
  * Falls back to simple template response if API not configured
  */
 export const generateAIResponse = action({
@@ -197,21 +171,42 @@ export const generateAIResponse = action({
     userMessage: v.string(),
   },
   handler: async (ctx, { threadId, userMessage }) => {
-    // Generate domain suggestions based on the user's message
-    const domainSuggestions = generateDomainSuggestions(userMessage);
+    const aiGatewayKey = process.env.VERCEL_AI_GATEWAY_KEY;
 
-    // Check domain availability
+    // Generate domain suggestions - either via Claude or basic algorithm
+    let domainSuggestions: string[];
+    let thinkingResponse: string;
+
+    if (aiGatewayKey) {
+      // Use Claude via Vercel AI Gateway to generate creative domain suggestions
+      const claudeResult = await generateWithVercelAIGateway(userMessage, aiGatewayKey);
+      domainSuggestions = claudeResult.suggestions;
+      thinkingResponse = claudeResult.thinking;
+    } else {
+      // Fallback to basic algorithm
+      console.log("VERCEL_AI_GATEWAY_KEY not configured, using basic domain generation");
+      domainSuggestions = generateDomainSuggestions(userMessage);
+      thinkingResponse = `Great! "${userMessage}" sounds like an exciting project! Let me brainstorm some domain names and check their availability...\n\nI'm looking for names that are:\n- Memorable and brandable\n- Available across popular TLDs\n- Related to your project concept`;
+    }
+
+    // Check domain availability via GoDaddy
     const domainResults = await ctx.runAction(api.actions.checkDomains, {
       domains: domainSuggestions,
     });
 
     const availableCount = domainResults.filter((r) => r.available).length;
 
-    // For now, return a structured response
-    // In production, this would call Claude via Vercel AI Gateway
+    // Generate results summary
+    let resultsResponse: string;
+    if (aiGatewayKey) {
+      resultsResponse = await generateResultsSummary(domainResults, userMessage, aiGatewayKey);
+    } else {
+      resultsResponse = `I found ${availableCount} available domains out of ${domainResults.length} checked! Here are the results:`;
+    }
+
     return {
-      thinking: `Great! "${userMessage}" sounds like an exciting project! Let me brainstorm some domain names and check their availability...\n\nI'm looking for names that are:\n- Memorable and brandable\n- Available across popular TLDs\n- Related to your project concept`,
-      results: `I found ${availableCount} available domains out of ${domainResults.length} checked! Here are the results:`,
+      thinking: thinkingResponse,
+      results: resultsResponse,
       domainResults,
       toolCalls: [
         {
@@ -223,6 +218,136 @@ export const generateAIResponse = action({
     };
   },
 });
+
+/**
+ * Call Claude via Vercel AI Gateway to generate creative domain suggestions
+ */
+async function generateWithVercelAIGateway(
+  projectIdea: string,
+  apiKey: string
+): Promise<{ suggestions: string[]; thinking: string }> {
+  const systemPrompt = `You are DomainBot, a creative domain name discovery assistant.
+Your job is to help users find perfect domain names for their projects.
+
+When given a project description, you should:
+1. Extract key concepts and keywords
+2. Generate creative, memorable domain names using strategies like:
+   - Combining words creatively
+   - Using prefixes (get, my, try, use, go, hey)
+   - Using suffixes (app, hq, hub, ly, ify)
+   - Wordplay, alliteration, and rhymes
+   - Short memorable names
+3. Consider multiple TLDs: .com, .io, .co, .dev, .app, .ai
+
+Respond with a JSON object containing:
+- "thinking": A brief explanation of your creative process (2-3 sentences)
+- "suggestions": An array of 10-15 full domain names (e.g., "coolapp.io", "myproject.com")
+
+Important: Only output valid JSON, no markdown formatting.`;
+
+  try {
+    const response = await fetch(VERCEL_AI_GATEWAY_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "anthropic/claude-3-5-sonnet",
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt,
+          },
+          {
+            role: "user",
+            content: `Help me find domain names for this project: ${projectIdea}`,
+          },
+        ],
+        max_tokens: 1024,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Vercel AI Gateway error:", response.status, errorText);
+      throw new Error(`Vercel AI Gateway error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || "";
+
+    // Parse JSON response
+    try {
+      const parsed = JSON.parse(content);
+      return {
+        thinking: parsed.thinking || "Let me find some creative domain names for you...",
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 15) : generateDomainSuggestions(projectIdea),
+      };
+    } catch (parseError) {
+      console.error("Failed to parse Claude response:", parseError);
+      return {
+        thinking: content.slice(0, 300),
+        suggestions: generateDomainSuggestions(projectIdea),
+      };
+    }
+  } catch (error) {
+    console.error("Vercel AI Gateway call failed:", error);
+    return {
+      thinking: `Great! "${projectIdea}" sounds like an exciting project! Let me brainstorm some domain names...`,
+      suggestions: generateDomainSuggestions(projectIdea),
+    };
+  }
+}
+
+/**
+ * Generate a summary of domain results using Claude via Vercel AI Gateway
+ */
+async function generateResultsSummary(
+  results: DomainCheckResult[],
+  projectIdea: string,
+  apiKey: string
+): Promise<string> {
+  const availableCount = results.filter((r) => r.available).length;
+  const availableDomains = results.filter((r) => r.available).map((r) => r.domain);
+  const premiumDomains = results.filter((r) => r.premium).map((r) => `${r.domain} ($${r.price})`);
+
+  try {
+    const response = await fetch(VERCEL_AI_GATEWAY_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "anthropic/claude-3-5-sonnet",
+        messages: [
+          {
+            role: "user",
+            content: `The user is looking for domains for: "${projectIdea}"
+
+I checked ${results.length} domains and found ${availableCount} available.
+Available domains: ${availableDomains.join(", ") || "none"}
+Premium domains: ${premiumDomains.join(", ") || "none"}
+
+Write a brief, friendly 1-2 sentence summary of the results. Be encouraging and highlight the best options if any are available. Don't use bullet points, just plain text.`,
+          },
+        ],
+        max_tokens: 256,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Vercel AI Gateway error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || `I found ${availableCount} available domains out of ${results.length} checked!`;
+  } catch (error) {
+    console.error("Failed to generate results summary:", error);
+    return `I found ${availableCount} available domains out of ${results.length} checked! Here are the results:`;
+  }
+}
 
 /**
  * Generate domain name suggestions based on project description

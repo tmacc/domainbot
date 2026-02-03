@@ -21,6 +21,7 @@ function HomePage(): JSX.Element {
       <Sidebar
         currentConversationId={currentConversationId}
         onNewChat={handleNewChat}
+        onSelectConversation={(id) => setCurrentConversationId(id)}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
