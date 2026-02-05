@@ -5,6 +5,7 @@
 
 interface EnvConfig {
   VITE_CONVEX_URL: string;
+  VITE_SIMPLE_PRODUCT_API_KEY: string | undefined;
 }
 
 function validateEnv(): EnvConfig {
@@ -21,6 +22,7 @@ function validateEnv(): EnvConfig {
 
   return {
     VITE_CONVEX_URL: convexUrl,
+    VITE_SIMPLE_PRODUCT_API_KEY: import.meta.env.VITE_SIMPLE_PRODUCT_API_KEY,
   };
 }
 

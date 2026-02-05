@@ -22,6 +22,7 @@
     "@convex-dev/agent": "^0.3.2",
     "@convex-dev/better-auth": "^0.10.10",
     "@octokit/rest": "^22.0.1",
+    "@simple-product/sdk": "^0.1.2",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-devtools": "^0.7.0",
     "@tanstack/react-router": "^1.132.0",

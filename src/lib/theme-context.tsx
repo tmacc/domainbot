@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -174,12 +175,20 @@ export function ThemeProvider({
     return localStorage.getItem(STORAGE_KEY) || defaultTheme;
   });
 
-  // Sync theme from Convex user record on initial load
+  // Track if we've done initial sync from Convex to avoid overwriting user changes
+  const hasSyncedFromConvex = useRef(false);
+
+  // Sync theme from Convex user record on initial load (once)
   useEffect(() => {
-    if (user?.selectedTheme && user.selectedTheme !== theme) {
-      setThemeState(user.selectedTheme);
-      if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEY, user.selectedTheme);
+    if (user?.selectedTheme && !hasSyncedFromConvex.current) {
+      hasSyncedFromConvex.current = true;
+      // Only update if Convex has a different theme than localStorage
+      const localTheme = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+      if (user.selectedTheme !== localTheme) {
+        setThemeState(user.selectedTheme);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(STORAGE_KEY, user.selectedTheme);
+        }
       }
     }
   }, [user?.selectedTheme]);
