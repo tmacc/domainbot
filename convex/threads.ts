@@ -1,110 +1,142 @@
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { query, mutation, action } from "./_generated/server";
+import { components } from "./_generated/api";
+import { domainBot } from "./agent";
 
-// List threads for a user
-export const listByUser = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, { userId }) => {
-    return await ctx.db
-      .query("threads")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .order("desc")
-      .collect();
-  },
-});
+// ============================================
+// Agent-based Thread Management (New)
+// ============================================
 
-// Get a single thread
-export const get = query({
-  args: { threadId: v.id("threads") },
-  handler: async (ctx, { threadId }) => {
-    return await ctx.db.get(threadId);
-  },
-});
-
-// Get messages for a thread
-export const getMessages = query({
-  args: { threadId: v.id("threads") },
-  handler: async (ctx, { threadId }) => {
-    return await ctx.db
-      .query("messages")
-      .withIndex("by_thread", (q) => q.eq("threadId", threadId))
-      .order("asc")
-      .collect();
-  },
-});
-
-// Create a new thread
-export const create = mutation({
+/**
+ * Create a new thread using the agent plugin
+ */
+export const create = action({
   args: {
     userId: v.id("users"),
     title: v.optional(v.string()),
   },
   handler: async (ctx, { userId, title }) => {
-    const threadId = await ctx.db.insert("threads", {
-      userId,
-      title: title ?? "New conversation",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+    const { threadId } = await domainBot.createThread(ctx, {
+      metadata: {
+        userId: userId.toString(),
+        title: title ?? "New conversation",
+      },
     });
     return threadId;
   },
 });
 
-// Update thread title
+/**
+ * List threads for a user from the agent plugin
+ */
+export const listByUser = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    // Query the agent's threads table
+    const threads = await ctx.runQuery(
+      components.agent.threads.listThreadsByUserId,
+      {
+        userId: userId.toString(),
+        order: "desc",
+      }
+    );
+
+    // Map to our expected format
+    return threads.page.map((t) => ({
+      _id: t._id,
+      _creationTime: t._creationTime,
+      title: (t.metadata as { title?: string })?.title ?? "Untitled",
+      userId: userId,
+      createdAt: t._creationTime,
+      updatedAt: t._creationTime,
+    }));
+  },
+});
+
+/**
+ * Get a single thread
+ */
+export const get = query({
+  args: { threadId: v.string() },
+  handler: async (ctx, { threadId }) => {
+    const thread = await ctx.runQuery(components.agent.threads.getThread, {
+      threadId,
+    });
+
+    if (!thread) return null;
+
+    return {
+      _id: thread._id,
+      _creationTime: thread._creationTime,
+      title: (thread.metadata as { title?: string })?.title ?? "Untitled",
+      createdAt: thread._creationTime,
+      updatedAt: thread._creationTime,
+    };
+  },
+});
+
+/**
+ * Get messages for a thread from the agent plugin
+ */
+export const getMessages = query({
+  args: { threadId: v.string() },
+  handler: async (ctx, { threadId }) => {
+    const messages = await ctx.runQuery(
+      components.agent.messages.listMessagesByThreadId,
+      {
+        threadId,
+        order: "asc",
+      }
+    );
+
+    // Map to our expected format
+    return messages.page
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => ({
+        _id: m._id,
+        _creationTime: m._creationTime,
+        threadId,
+        role: m.role as "user" | "assistant",
+        content: m.message?.content ?? "",
+        toolCalls: m.message?.toolCalls?.map((tc) => ({
+          id: tc.toolCallId,
+          name: tc.toolName,
+          input: tc.args,
+        })),
+        toolResults: m.message?.toolResults?.map((tr) => ({
+          toolCallId: tr.toolCallId,
+          result: tr.result,
+        })),
+        createdAt: m._creationTime,
+      }));
+  },
+});
+
+/**
+ * Update thread title
+ */
 export const updateTitle = mutation({
   args: {
-    threadId: v.id("threads"),
+    threadId: v.string(),
     title: v.string(),
   },
   handler: async (ctx, { threadId, title }) => {
-    await ctx.db.patch(threadId, {
-      title,
-      updatedAt: Date.now(),
+    // Get current thread to preserve metadata
+    const thread = await ctx.runQuery(components.agent.threads.getThread, {
+      threadId,
     });
+
+    if (thread) {
+      await ctx.runMutation(components.agent.threads.updateThread, {
+        threadId,
+        metadata: {
+          ...(thread.metadata as object),
+          title,
+        },
+      });
+    }
   },
 });
 
-// Add a message to a thread
-export const addMessage = mutation({
-  args: {
-    threadId: v.id("threads"),
-    role: v.union(
-      v.literal("user"),
-      v.literal("assistant"),
-      v.literal("tool"),
-      v.literal("system")
-    ),
-    content: v.string(),
-    toolCalls: v.optional(
-      v.array(
-        v.object({
-          id: v.string(),
-          name: v.string(),
-          input: v.any(),
-        })
-      )
-    ),
-    toolResults: v.optional(
-      v.array(
-        v.object({
-          toolCallId: v.string(),
-          result: v.any(),
-        })
-      )
-    ),
-  },
-  handler: async (ctx, args) => {
-    const messageId = await ctx.db.insert("messages", {
-      ...args,
-      streaming: false,
-      createdAt: Date.now(),
-    });
-
-    // Update thread timestamp
-    await ctx.db.patch(args.threadId, {
-      updatedAt: Date.now(),
-    });
-
-    return messageId;
-  },
-});
+// Note: addMessage is no longer needed - the agent handles message storage automatically
+// when you call domainBot.generateText() or domainBot.chat()

@@ -26,7 +26,10 @@ function HomePage(): JSX.Element {
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
       <main className="flex-1">
-        <ChatArea conversationId={currentConversationId} />
+        <ChatArea
+          conversationId={currentConversationId}
+          onNewConversation={(id) => setCurrentConversationId(id)}
+        />
       </main>
     </div>
   );
